@@ -120,6 +120,13 @@ button:focus-visible,a:focus-visible{outline:2px solid var(--gold2);outline-offs
   cursor:pointer;transition:all 0.2s;margin-top:6px;
 }
 .btn-otp:hover{background:var(--navy);color:#fff}
+.btn-otp:disabled,.btn-next:disabled{opacity:0.55;cursor:not-allowed;transform:none!important;box-shadow:none!important}
+.sending-dots span{display:inline-block;animation:dot 1.2s infinite;font-size:1.1rem;line-height:1}
+.sending-dots span:nth-child(2){animation-delay:0.2s}
+.sending-dots span:nth-child(3){animation-delay:0.4s}
+@keyframes dot{0%,80%,100%{opacity:0.2;transform:scale(0.8)}40%{opacity:1;transform:scale(1)}}
+.cold-warn{background:rgba(160,120,40,0.07);border:1px solid rgba(160,120,40,0.22);border-radius:8px;
+  padding:9px 13px;font-size:0.76rem;color:var(--gold);margin-bottom:10px;display:none;line-height:1.5}
 
 .err-box{background:rgba(192,57,43,0.06);border:1px solid rgba(192,57,43,0.12);
   border-radius:7px;padding:10px 13px;color:var(--red);font-size:0.8rem;
@@ -210,6 +217,7 @@ button:focus-visible,a:focus-visible{outline:2px solid var(--gold2);outline-offs
     <div class="step-title" id="s2-title">Contact Details</div>
     <p class="step-sub" id="s2-sub">We'll send a verification code to your email.</p>
     <div class="err-box" id="err2"></div>
+    <div class="cold-warn" id="cold-warn">⏳ সার্ভার জাগছে… (Render free tier cold start). একটু অপেক্ষা করুন — সাধারণত ৩০-৬০ সেকেন্ড লাগে।</div>
     <div class="fg"><label id="lbl-email">Email Address *</label><input type="email" id="email" placeholder="you@example.com"></div>
     <div class="fg"><label id="lbl-phone">Phone Number</label><input type="tel" id="phone" placeholder="01XXXXXXXXX"></div>
     <div class="fg-row">
@@ -461,23 +469,52 @@ function next(s){
 
 async function sendOTP(resend=false){
   hideErr('err2');
+  document.getElementById('cold-warn').style.display='none';
   const email=document.getElementById('email').value.trim();
   if(!email){showErr('err2',t('err_email'));return;}
+
+  // disable button + show loading dots
+  const btn=document.getElementById('btn-send-otp');
+  btn.disabled=true;
+  btn.innerHTML='<span class="sending-dots"><span>•</span><span>•</span><span>•</span></span>';
+
+  // show cold-warn after 5s if still waiting
+  const coldTimer=setTimeout(()=>{
+    document.getElementById('cold-warn').style.display='block';
+  },5000);
+
   try{
-    const res=await fetch(`${API}/auth/send-register-otp`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email})});
+    const controller=new AbortController();
+    const timeoutId=setTimeout(()=>controller.abort(),90000); // 90s timeout for cold start
+    const res=await fetch(`${API}/auth/send-register-otp`,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({email}),
+      signal:controller.signal
+    });
+    clearTimeout(timeoutId);
+    clearTimeout(coldTimer);
+    document.getElementById('cold-warn').style.display='none';
+    btn.disabled=false;
+    btn.textContent=t('send_code');
+
     const data=await res.json();
     if(!res.ok){showErr('err2',data.message||t('err_send'));return;}
     otpGenerated=data.otp||'';
     document.getElementById('otp-email-show').textContent=email;
-    if(otpGenerated){document.getElementById('otp-hint').textContent='Dev mode OTP: '+otpGenerated;document.getElementById('otp-hint').style.display='block';}
+    if(otpGenerated){document.getElementById('otp-hint').textContent='Dev OTP: '+otpGenerated;document.getElementById('otp-hint').style.display='block';}
     setStep(3);
     startTimer();
-  }catch{
-    otpGenerated=Math.floor(100000+Math.random()*900000).toString();
-    document.getElementById('otp-email-show').textContent=email;
-    document.getElementById('otp-hint').textContent='Dev mode OTP: '+otpGenerated;
-    document.getElementById('otp-hint').style.display='block';
-    setStep(3);startTimer();
+  }catch(err){
+    clearTimeout(coldTimer);
+    document.getElementById('cold-warn').style.display='none';
+    btn.disabled=false;
+    btn.textContent=t('send_code');
+    if(err.name==='AbortError'){
+      showErr('err2','সার্ভার respond করছে না। একটু পর আবার চেষ্টা করুন।');
+    } else {
+      showErr('err2',t('err_server'));
+    }
   }
 }
 
