@@ -470,6 +470,24 @@ async function loadBrowse(){
       _listings = Array.isArray(raw) ? raw : (raw.listings || []);
     } else { _listings = []; }
     const today = new Date(); today.setHours(0,0,0,0);
+    _listings = _listings.map(l=>({
+      ListingID:    l.ListingID    || l.listingid,
+      SellerID:     l.SellerID     || l.sellerid,
+      SellerName:   l.SellerName   || l.sellername || l.FirstName || l.firstname,
+      FirstName:    l.FirstName    || l.firstname,
+      Origin:       l.Origin       || l.origin,
+      Destination:  l.Destination  || l.destination,
+      JourneyDate:  l.JourneyDate  || l.journeydate,
+      SeatNumber:   l.SeatNumber   || l.seatnumber,
+      VehicleName:  l.VehicleName  || l.vehiclename,
+      VehicleType:  l.VehicleType  || l.vehicletype,
+      TotalFare:    l.TotalFare    || l.totalfare,
+      AskingPrice:  l.AskingPrice  ?? l.askingprice,
+      ListingType:  l.ListingType  || l.listingtype,
+      ListingStatus:l.ListingStatus|| l.listingstatus,
+      Status:       l.Status       || l.listingstatus,
+      ...l
+    }));
     _listings = _listings.filter(l => !l.JourneyDate || new Date(l.JourneyDate) >= today);
     document.getElementById('stat-active').textContent = _listings.length;
     document.getElementById('tc-browse').textContent = _listings.length;
@@ -620,7 +638,11 @@ async function loadSwapPicker(){
   picker.innerHTML = '<div class="spinner"></div>';
   if(!_myBk.length) await fetchMyBk();
   const today = new Date(); today.setHours(0,0,0,0);
-  const eligible = _myBk.filter(b=>(b.Status||b.BookingStatus)==='confirmed' && new Date(b.JourneyDate)>=today);
+  const eligible = _myBk.filter(b=>{
+    const status=(b.bookingstatus||b.BookingStatus||b.Status||'').toLowerCase();
+    const jd=new Date(b.JourneyDate||b.journeydate||0);
+    return status==='confirmed' && jd>=today;
+  });
   if(!eligible.length){
     picker.innerHTML = '<div style="padding:14px;font-size:.78rem;color:var(--tx2);text-align:center">No confirmed tickets to offer. <a href="routes.html" style="color:var(--nv)">Book a ticket</a></div>';
     return;
@@ -708,14 +730,31 @@ async function fetchMyBk(){
   try{
     const res = await fetch(`${API}/bookings/my`, {headers:H()});
     const d = await res.json();
-    _myBk = Array.isArray(d) ? d : (d.bookings||[]);
+    const raw = Array.isArray(d) ? d : (d.bookings||[]);
+    _myBk = raw.map(b=>({
+      BookingID:     b.BookingID    || b.bookingid,
+      BookingStatus: b.BookingStatus|| b.bookingstatus,
+      Status:        b.Status       || b.bookingstatus,
+      JourneyDate:   b.JourneyDate  || b.journeydate,
+      Origin:        b.Origin       || b.origin,
+      Destination:   b.Destination  || b.destination,
+      SeatNumber:    b.SeatNumber   || b.seatnumber || b.SeatNumbers || b.seatnumbers,
+      VehicleName:   b.VehicleName  || b.vehiclename,
+      VehicleType:   b.VehicleType  || b.vehicletype,
+      TotalFare:     b.TotalFare    || b.totalfare,
+      ...b
+    }));
   } catch{ _myBk=[]; }
 }
 
 function buildBkPicker(){
   const picker = document.getElementById('bk-picker');
   const today = new Date(); today.setHours(0,0,0,0);
-  const eligible = _myBk.filter(b=>(b.Status||b.BookingStatus)==='confirmed' && new Date(b.JourneyDate)>=today);
+  const eligible = _myBk.filter(b=>{
+    const status=(b.bookingstatus||b.BookingStatus||b.Status||'').toLowerCase();
+    const jd=new Date(b.JourneyDate||b.journeydate||0);
+    return status==='confirmed' && jd>=today;
+  });
   if(!eligible.length){
     picker.innerHTML='<div style="padding:16px;font-size:.78rem;color:var(--tx2);text-align:center">No confirmed future bookings. <a href="routes.html" style="color:var(--nv)">Book a ticket</a></div>';
     return;
